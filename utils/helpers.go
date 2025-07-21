@@ -8,3 +8,4 @@ func IsValidInterval(interval string) bool {
 		return false
 	}
 }
+

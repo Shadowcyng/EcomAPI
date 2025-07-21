@@ -1,4 +1,3 @@
-// api/internal/store/analytics_store.go
 package store
 
 import (
@@ -34,8 +33,6 @@ func (s *AnalyticsStore) InsertAnalyticsEvents(ctx context.Context, events []mod
 		return nil
 	}
 
-	// Prepare a batch insert statement.
-	// Ensure these column names and their order exactly match your ClickHouse table schema.
 	batch, err := s.DB.Conn.PrepareBatch(ctx, `
 		INSERT INTO analytics_events (
 			event_id, event_type, user_id, session_id, timestamp, page_path, referrer, user_agent,
@@ -85,7 +82,6 @@ func (s *AnalyticsStore) GetEventCountsOverTime(ctx context.Context, interval st
 		return nil, fmt.Errorf("invalid interval: %s", interval)
 	}
 
-	// Dynamically build SELECT, GROUP BY, and WHERE clauses
 	selectCols := fmt.Sprintf("toStartOf%s(timestamp) as time_bucket, count() as total_events", interval)
 	groupByCols := "time_bucket"
 	whereClause := "WHERE timestamp >= ? AND timestamp <= ?"
@@ -124,19 +120,17 @@ func (s *AnalyticsStore) GetEventCountsOverTime(ctx context.Context, interval st
 		)
 
 		if isFilteringByType {
-			// Scan into all three variables if filtering by type
 			if err := rows.Scan(&timeBucket, &count, &eventTypeDB); err != nil {
 				log.Printf("Error scanning row for event counts over time (with type filter): %v", err)
 				continue
 			}
-			currentResult.EventType = &eventTypeDB // Assign pointer to string
+			currentResult.EventType = &eventTypeDB
 		} else {
-			// Scan only time and count if not filtering by type
 			if err := rows.Scan(&timeBucket, &count); err != nil {
 				log.Printf("Error scanning row for event counts over time (no type filter): %v", err)
 				continue
 			}
-			currentResult.EventType = nil // Explicitly set to nil for total counts
+			currentResult.EventType = nil
 		}
 
 		currentResult.Time = timeBucket
@@ -155,7 +149,6 @@ func (s *AnalyticsStore) GetAverageEventDuration(ctx context.Context, eventTypeF
 	var query string
 	var args []interface{}
 
-	// Base query to calculate average durationMs
 	query = `SELECT avg(duration_ms) FROM analytics_events WHERE timestamp >= ? AND timestamp <= ?`
 	args = append(args, start, end)
 
@@ -167,9 +160,8 @@ func (s *AnalyticsStore) GetAverageEventDuration(ctx context.Context, eventTypeF
 	var avgDuration float64
 	err := s.DB.Conn.QueryRow(ctx, query, args...).Scan(&avgDuration)
 	if err != nil {
-		// Check if no rows were returned (e.g., no events found)
-		if err.Error() == "sql: no rows in result set" { // Specific error for no rows
-			return 0.0, nil // Return 0.0 for average if no events, no error
+		if err.Error() == "sql: no rows in result set" {
+			return 0.0, nil
 		}
 		return 0.0, fmt.Errorf("failed to query average event duration: %w", err)
 	}
@@ -182,8 +174,6 @@ func (s *AnalyticsStore) GetAverageCustomEventParameter(ctx context.Context, eve
 		return 0.0, fmt.Errorf("parameter name for average calculation cannot be empty")
 	}
 
-	// Construct the query string dynamically to extract the specific parameter
-	// We cast event_data to String for JSONExtractFloat, as required by ClickHouse for JSON columns.
 	query := fmt.Sprintf(`
 		SELECT avg(JSONExtractFloat(toString(event_data), '%s'))
 		FROM analytics_events
@@ -195,18 +185,12 @@ func (s *AnalyticsStore) GetAverageCustomEventParameter(ctx context.Context, eve
 	var avgValue float64
 	err := s.DB.Conn.QueryRow(ctx, query, args...).Scan(&avgValue)
 	if err != nil {
-		// If no rows are found, ClickHouse might return a "sql: no rows in result set" error.
-		// In this case, we return 0.0 as the average.
 		if err.Error() == "sql: no rows in result set" {
 			return 0.0, nil
 		}
-		// For other errors, return a detailed error.
 		return 0.0, fmt.Errorf("failed to query average of custom event parameter '%s': %w", paramName, err)
 	}
 
-	// ClickHouse's avg() function returns NaN if there are no matching rows,
-	// which is not supported by standard JSON marshalling.
-	// We check for NaN and convert it to 0.0 for consistent API responses.
 	if math.IsNaN(avgValue) {
 		return 0.0, nil
 	}
@@ -244,7 +228,6 @@ func (s *AnalyticsStore) GetUniqueUsersOverTime(ctx context.Context, interval st
 		results = append(results, EventTypeCountByTime{
 			Time:  timeBucket,
 			Count: uniqueUsers,
-			// EventType will be nil/omitted, as this is a total count
 		})
 	}
 
@@ -257,7 +240,7 @@ func (s *AnalyticsStore) GetUniqueUsersOverTime(ctx context.Context, interval st
 
 func (s *AnalyticsStore) GetTopNPagePaths(ctx context.Context, start, end time.Time, limit uint64) ([]models.TopPathResult, error) {
 	if limit == 0 {
-		limit = 10 // Default limit if 0 is passed
+		limit = 10
 	}
 
 	query := `

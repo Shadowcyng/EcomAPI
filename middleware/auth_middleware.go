@@ -1,25 +1,36 @@
-// api/middleware/auth_middleware.go
 package middleware
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+
+	"mabletask/api/utils"
 
 	"github.com/gin-gonic/gin"
-	"mabletask/api/utils" // Import your utils package for JWT functions
 )
 
-// AuthRequired is a Gin middleware to check for a valid JWT token.
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 1. Try to get the token from the HttpOnly cookie.
-		tokenString, err := c.Cookie("jwt_token")
-		if err != nil {
-			log.Printf("AuthRequired: No JWT token cookie found or error: %v", err)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: No token provided"})
+		defaultToken := c.GetHeader("X-API-KEY")
+		if defaultToken == os.Getenv("AUTH_DEFAULT") {
+			c.Next()
 			return
 		}
+		tokenString, err := c.Cookie("jwt_token")
+		if err != nil {
+			tokenString = c.GetHeader("Authorization")
+			if tokenString == "" {
+				log.Println("AuthRequired: No JWT token found in cookie or header")
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: No token provided"})
+				return
+			}
+			if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+				tokenString = tokenString[7:]
+			}
 
+		}
 		claims, err := utils.ValidateJWT(tokenString)
 		if err != nil {
 			log.Printf("AuthRequired: Invalid JWT token: %v", err)
@@ -27,11 +38,11 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
+		fmt.Println("claims", claims)
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
 
 		log.Printf("AuthRequired: User authenticated - ID: %d, Email: %s", claims.UserID, claims.Email)
-
 		c.Next()
 	}
 }

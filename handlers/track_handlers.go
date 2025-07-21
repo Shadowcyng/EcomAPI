@@ -1,4 +1,3 @@
-// api/handlers/analytics_handlers.go
 package handlers
 
 import (
@@ -8,11 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"mabletask/api/models" // Your updated models package
+	"mabletask/api/models"
 	"mabletask/api/store"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid" // For generating EventID
+	"github.com/google/uuid"
 )
 
 type AnalyticsHandlers struct {
@@ -26,7 +25,8 @@ func NewAnalyticsHandlers(s *store.AnalyticsStore) *AnalyticsHandlers {
 }
 
 func (h *AnalyticsHandlers) TrackEvent(c *gin.Context) {
-	// The frontend sends an array of AnalyticsEvent objects.
+	userId := c.GetString("user_id")
+	log.Printf("request recieved::::")
 	var incomingEvents []models.AnalyticsEvent
 	if err := c.ShouldBindJSON(&incomingEvents); err != nil {
 		log.Printf("Error binding incoming analytics JSON: %v", err)
@@ -42,13 +42,17 @@ func (h *AnalyticsHandlers) TrackEvent(c *gin.Context) {
 	var eventsToInsert []models.AnalyticsEvent
 
 	for _, event := range incomingEvents {
-		event.EventID = uuid.New().String() // Generate a unique ID for this event record
-		event.IPAddress = c.ClientIP()      // Capture IP address from the request context
+		event.EventID = uuid.New().String()
+		event.IPAddress = c.ClientIP()
+		if event.UserID != "" {
+			event.UserID = userId
+		}
+		event.Timestamp = time.Now().UTC()
 
 		eventsToInsert = append(eventsToInsert, event)
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second) // Set a timeout for DB operation
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
 	if err := h.AnalyticsStore.InsertAnalyticsEvents(ctx, eventsToInsert); err != nil {
@@ -56,8 +60,8 @@ func (h *AnalyticsHandlers) TrackEvent(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record analytics events"})
 		return
 	}
-
-	c.Status(http.StatusOK)
+	log.Println("Successfully logged event")
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func (h *AnalyticsHandlers) GetEventCountsOverTime(c *gin.Context) {
@@ -68,7 +72,7 @@ func (h *AnalyticsHandlers) GetEventCountsOverTime(c *gin.Context) {
 	}
 
 	// Optional eventType filter
-	eventTypeFilter := c.Query("eventType") // Will be "" if not provided
+	eventTypeFilter := c.Query("eventType")
 
 	// Parse start and end times
 	var start, end time.Time
@@ -82,7 +86,7 @@ func (h *AnalyticsHandlers) GetEventCountsOverTime(c *gin.Context) {
 			return
 		}
 	} else {
-		start = time.Now().UTC().Add(-7 * 24 * time.Hour) // Default to 7 days ago if not provided
+		start = time.Now().UTC().Add(-7 * 24 * time.Hour)
 		log.Printf("No 'start' timestamp provided, defaulting to 7 days ago: %s", start.Format(time.RFC3339))
 	}
 
@@ -94,7 +98,7 @@ func (h *AnalyticsHandlers) GetEventCountsOverTime(c *gin.Context) {
 			return
 		}
 	} else {
-		end = time.Now().UTC() // Default to now
+		end = time.Now().UTC()
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
@@ -111,9 +115,8 @@ func (h *AnalyticsHandlers) GetEventCountsOverTime(c *gin.Context) {
 }
 
 func (h *AnalyticsHandlers) GetAverageEventDuration(c *gin.Context) {
-	eventTypeFilter := c.Query("eventType") // Will be "" if not provided
+	eventTypeFilter := c.Query("eventType")
 
-	// Parse start and end times (re-use logic from GetEventCountsOverTime)
 	var start, end time.Time
 	var err error
 
@@ -125,7 +128,7 @@ func (h *AnalyticsHandlers) GetAverageEventDuration(c *gin.Context) {
 			return
 		}
 	} else {
-		start = time.Now().UTC().Add(-7 * 24 * time.Hour) // Default to 7 days ago
+		start = time.Now().UTC().Add(-7 * 24 * time.Hour)
 	}
 
 	endParam := c.Query("end")
@@ -136,7 +139,7 @@ func (h *AnalyticsHandlers) GetAverageEventDuration(c *gin.Context) {
 			return
 		}
 	} else {
-		end = time.Now().UTC() // Default to now
+		end = time.Now().UTC()
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
@@ -150,7 +153,7 @@ func (h *AnalyticsHandlers) GetAverageEventDuration(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"eventType":         eventTypeFilter, // Echo back the filter used
+		"eventType":         eventTypeFilter,
 		"startDate":         start.Format(time.RFC3339),
 		"endDate":           end.Format(time.RFC3339),
 		"averageDurationMs": avgDuration,
@@ -170,7 +173,6 @@ func (h *AnalyticsHandlers) GetAverageCustomEventParameter(c *gin.Context) {
 		return
 	}
 
-	// Parse start and end times (re-use logic)
 	var start, end time.Time
 	var err error
 
@@ -182,7 +184,7 @@ func (h *AnalyticsHandlers) GetAverageCustomEventParameter(c *gin.Context) {
 			return
 		}
 	} else {
-		start = time.Now().UTC().Add(-7 * 24 * time.Hour) // Default to 7 days ago
+		start = time.Now().UTC().Add(-7 * 24 * time.Hour)
 	}
 
 	endParam := c.Query("end")
@@ -193,7 +195,7 @@ func (h *AnalyticsHandlers) GetAverageCustomEventParameter(c *gin.Context) {
 			return
 		}
 	} else {
-		end = time.Now().UTC() // Default to now
+		end = time.Now().UTC()
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
@@ -263,7 +265,6 @@ func (h *AnalyticsHandlers) GetTopNPagePaths(c *gin.Context) {
 	var start, end time.Time
 	var err error
 
-	// Parse start and end times (re-use logic)
 	startParam := c.Query("start")
 	if startParam != "" {
 		start, err = time.Parse(time.RFC3339, startParam)
@@ -272,7 +273,7 @@ func (h *AnalyticsHandlers) GetTopNPagePaths(c *gin.Context) {
 			return
 		}
 	} else {
-		start = time.Now().UTC().Add(-7 * 24 * time.Hour) // Default to 7 days ago
+		start = time.Now().UTC().Add(-7 * 24 * time.Hour)
 	}
 
 	endParam := c.Query("end")
@@ -283,10 +284,10 @@ func (h *AnalyticsHandlers) GetTopNPagePaths(c *gin.Context) {
 			return
 		}
 	} else {
-		end = time.Now().UTC() // Default to now
+		end = time.Now().UTC()
 	}
 
-	var limit uint64 = 10 // Default limit
+	var limit uint64 = 10
 	limitParam := c.Query("limit")
 	if limitParam != "" {
 		parsedLimit, err := strconv.ParseUint(limitParam, 10, 64)

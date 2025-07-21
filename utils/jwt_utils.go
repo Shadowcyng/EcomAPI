@@ -10,8 +10,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Define custom claims for our JWT.
-// We embed jwt.RegisteredClaims to include standard JWT fields like Issuer, Subject, ExpiresAt etc.
 type Claims struct {
 	UserID int    `json:"user_id"`
 	Email  string `json:"email"`
@@ -20,7 +18,6 @@ type Claims struct {
 
 var jwtSecret = []byte(os.Getenv("JWT_SECRET_KEY"))
 
-// GenerateJWT generates a new JWT token for a given user.
 func GenerateJWT(user *models.User) (string, error) {
 	expirationTime := time.Now().Add(1 * time.Hour)
 
@@ -45,12 +42,10 @@ func GenerateJWT(user *models.User) (string, error) {
 	return tokenString, nil
 }
 
-// ValidateJWT parses and validates a JWT token string.
 func ValidateJWT(tokenString string) (*Claims, error) {
 	claims := &Claims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		// Validate the signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}

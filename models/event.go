@@ -1,4 +1,3 @@
-// api/internal/models/analytics.go
 package models
 
 import (
@@ -6,7 +5,6 @@ import (
 	"time"
 )
 
-// AnalyticsEvent represents a single analytics event.
 type AnalyticsEvent struct {
 	EventID    string          `json:"eventId"`
 	EventType  string          `json:"eventType"`

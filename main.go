@@ -1,8 +1,7 @@
-// api/main.go
 package main
 
 import (
-	"context" // For converting User ID to string
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -14,14 +13,12 @@ import (
 	"github.com/joho/godotenv"
 
 	"mabletask/api/database"
-	"mabletask/api/handlers" // For AuthHandlers
+	"mabletask/api/handlers"
 	"mabletask/api/middleware"
 	"mabletask/api/store"
-	// "mabletask/api/utils" // Implicitly used by handlers and middleware
 )
 
 func main() {
-	// Load .env file at the very start
 	if err := godotenv.Load(); err != nil {
 		log.Printf("No .env file found or error loading .env: %v", err)
 	}
@@ -30,55 +27,57 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// --- Initialize PostgreSQL Database (for users) ---
 	dbClient, err := database.NewPostgresDB()
 	if err != nil {
 		log.Fatalf("Failed to initialize PostgreSQL database: %v", err)
 	}
 	defer dbClient.Close()
 
-	// --- Initialize ClickHouse Database (for tracking events) ---
 	chClient, err := database.NewClickHouseDB()
 	if err != nil {
 		log.Fatalf("Failed to initialize ClickHouse database: %v", err)
 	}
 	defer chClient.Close()
 
-	// --- Initialize Stores ---
 	userStore := store.NewUserStore(dbClient.DB)
 	analyticsStore := store.NewAnalyticsStore(chClient)
 
-	// --- Initialize Handlers ---
 	authHandlers := handlers.NewAuthHandlers(userStore)
 	analyticsHandlers := handlers.NewAnalyticsHandlers(analyticsStore)
 
 	r := gin.Default()
 
 	r.Use(middleware.CORSMiddleware())
-
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"data": "Welcome to the Mable Analytics API!"})
+	})
 	api := r.Group("/api")
 	{
 		// Authentication Endpoints (no authentication required)
 		api.POST("/signup", authHandlers.Signup)
 		api.POST("/login", authHandlers.Login)
 		api.POST("/logout", authHandlers.Logout)
+		api.GET("/health", handlers.HealthCheck)
+		api.POST("/track", analyticsHandlers.TrackEvent)
+		api.GET("/", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"data": "Welcome to the Mable Analytics API!"})
+		})
 		// Protected Routes (require a valid JWT token)
 		protected := api.Group("/")
 		protected.Use(middleware.AuthRequired())
 		{
-			protected.POST("/track", analyticsHandlers.TrackEvent)
+			protected.POST("/validate-user", authHandlers.GetUserByToken)
 			// Example protected endpoint (e.g., get user profile)
 			protected.GET("/profile", func(c *gin.Context) {
 				userID := c.MustGet("user_id").(int)
 				userEmail := c.MustGet("user_email").(string)
-				// Access IP address if needed on frontend from a /profile endpoint
-				ipAddress := c.ClientIP() // Get IP from current request
+				ipAddress := c.ClientIP()
 
 				c.JSON(http.StatusOK, gin.H{
 					"message":    "Welcome to your profile!",
 					"user_id":    userID,
 					"user_email": userEmail,
-					"ip_address": ipAddress, // NEW: Include IP address in response
+					"ip_address": ipAddress,
 				})
 			})
 
@@ -124,5 +123,3 @@ func main() {
 
 	log.Println("Server exiting.")
 }
-
-// api.GET("/health", handlers.HealthCheck)
